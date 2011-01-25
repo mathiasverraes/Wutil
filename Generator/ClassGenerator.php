@@ -16,7 +16,13 @@ class ClassGenerator
    * @var string 
    */
   protected $wsdl;
- 
+
+  /**
+   * Output directory
+   * @var string
+   */
+  protected $output;
+
   /**
    * 
    * @param string $wsdl
@@ -24,6 +30,16 @@ class ClassGenerator
   public function __construct($wsdl)
   {
     $this->wsdl = $wsdl;
+  }
+
+  public function setOutputDirectory($dir)
+  {
+    $this->output = $dir;
+  }
+
+  public function getOutputDirectory($dir)
+  {
+    return $this->output;
   }
 
   /**
@@ -109,7 +125,7 @@ class ClassGenerator
    *
    */
   protected function getClient()
-  {
+  {    
     return new SoapClient($this->getWSDL());
   }
   
