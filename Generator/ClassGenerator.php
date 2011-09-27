@@ -1,6 +1,9 @@
 <?php
 namespace Wutil\Generator;
+
 use SoapClient;
+use DOMDocument;
+use DOMElement;
 
 /**
  * This is the "Class Generator" to generate a class based on a WSDL.
@@ -46,10 +49,26 @@ class ClassGenerator
    *
    * @param string $target_file
    */
-  public function generate($target_dir, $class_name, $namespace, $inherit, $template)
+  public function generate($target_dir, $class_name, $namespace, $inherit)
   {
-    $client = $this->getClient();
-    
+    $dom = new DOMDocument;
+    $dom->load($this->wsdl);
+
+    print_r(file_get_contents($this->wsdl));
+    foreach($dom->getElementsByTagName('complexType') as $complexType) {
+      $complexType = $this->parseComplexType($complexType);
+      $class_name = $complexType->getName();
+
+      $vars = array(
+          'members' => $complexType->getMembers(),
+          'class' => $complexType->getName(),
+          'namespace' => $namespace
+      );
+
+      file_put_contents($target_dir.'/'.$class_name.'.php', $this->fetchTemplate(__DIR__.'/../Templates/ComplexType.php', $vars));
+    }
+
+
     $vars = array(
         'methods' => array(),
         'class' => $class_name,
@@ -57,40 +76,38 @@ class ClassGenerator
         'inherit' => $inherit,
         'wsdl' => $this->wsdl
     );
-        
-    foreach($client->__getFunctions() as $function) {
-      $vars['methods'][] = $this->parseFunction($function);      
-    }
-    
-    file_put_contents($target_dir.'/'.$class_name.'.php', $this->fetchTemplate(__DIR__.'/../Templates/'.$template.'.php', $vars));
-  }
-  
-  /**
-   * Parses a string from the __getFunctions() array to an better accessible object 
-   *
-   * @param string $function the function string
-   *   
-   * @return Wutil\Generator\WSDLFunction
-   */
-  protected function parseFunction($function)
-  {
-    list($returns, $function) = explode(' ', $function, 2);
-    list($function, $calls) = preg_split("/[()]+/", $function);
-    
-    $function = new WSDLFunction($function, trim($returns));
-    
-    $calls = explode(', ', $calls);
-    foreach($calls as $call) {
-      $name = explode(' ', str_replace('$', '', $call), 2);
-      if (count($name) >= 2) {
-        list($type, $name) = $name;
-        $function->addParameter(new WSDLParameter($name, trim($type)));
-      }
-    }    
 
-    return $function;
+    foreach ($dom->getElementsByTagName('operation') as $operation) {
+      $vars['methods'][] = ComplexMethod::createFromDom($operation, $dom);
+    }
+
+    file_put_contents($target_dir.'/'.$class_name.'.php', $this->fetchTemplate(__DIR__.'/../Templates/SoapClass.php', $vars));
   }
-  
+
+  protected function parseComplexType(DOMElement $complexType)
+  {
+    $members = array();
+    
+    if ($complexType->getElementsByTagName('all')->length) {
+    
+    foreach($complexType->getElementsByTagName('all')->item(0)->getElementsByTagName('element') as $memberDom) {
+      $member = new ComplexMember;
+      $member->setName($memberDom->getAttribute('name'));
+      $type = explode(':', $memberDom->getAttribute('type'));
+      $type = array_pop($type);
+      $member->setType($type);
+      if ($memberDom->getAttribute('minOccurs')) {
+        $member->setMin($memberDom->getAttribute('minOccurs'));
+      }
+      if ($memberDom->getAttribute('maxOccurs')) {
+        $member->setMin($memberDom->getAttribute('maxOccurs'));
+      }
+
+      $members[] = $member;
+    }
+    }
+    return new ComplexType($complexType->getAttribute('name'), $members);
+  }
 
   /**
    * Fetches and proccesses a template
